@@ -1,0 +1,379 @@
+openapi: 3.0.1
+info:
+  title: 赞文合同比对 接口规范
+  version: 1.0.0
+  description: |
+    版本修改记录（A ---增加 M ---修改 D ---删除）
+    | 版本号 | 日期 | 作者 | A/M/D | 简单描述<br>（原因和修改简介） |
+    | -------- | --------|------- | -------- | --------|
+    | 1.0.0 | 20201104 | 蔡松珍 | A | 新建接口文档 |
+    # 1. 概述
+    ## 1.1 目的
+    &emsp;&emsp;本文旨在描述外部系统接入我司平台所遵循的接口规范，并依据本接口规范进行自身系统的开发工作。
+    ## 1.2 通讯方式
+    &emsp;&emsp;HTTP/HTTPS协议，使用POST或GET方式。
+    ## 1.3 数据编码
+    &emsp;&emsp;数据编码采用UTF-8编码格式。
+    ## 1.4 数据格式
+    &emsp;&emsp;JSON格式字符串。
+    # 2. 接口列表
+      * 创建比对任务
+      * 比对结果回传
+      * 获取比对结果（可选）
+  termsOfService: 'http://swagger.io/terms/'
+  contact:
+    name: 理光图像技术（上海）有限公司，软件开发中心，开发2课
+    email: gu.jiong@cn.ricoh.com
+  license:
+    name: Apache 2.0
+    url: 'https://www.apache.org/licenses/LICENSE-2.0'
+externalDocs:
+  description: Find out more
+  url: 'http://swagger.io'
+servers:
+  # Added by API Auto Mocking Plugin
+  - description: SwaggerHub API Auto Mocking
+    url: https://virtserver.swaggerhub.com/doc-compare/api/v1
+  - url: https://172.25.78.130/doc-compare/api/v1
+    description: 测试服务器
+tags:
+  - name: 创建比对任务
+    description: 赞文系统传入需要比对的pdf文件给第三方系统进行合同比对。
+  - name: 比对结果回传
+    description: |
+      第三方系统将合同比对结果回传给赞文系统。  
+      如遇网络原因，或者赞文系统更新维护回传失败，第三方系统尝试**十五分钟**，**一小时**，**两小时**后再次发送，如果还是无法发送则停止发送，保留比对结果24小时，由赞文系统主动获取结果。
+  - name: 获取比对结果
+    description: 赞文系统传入任务id，主动获取合同比对结果，超过24小时任务会自动删除，需要重新比对。
+paths:
+  /createTask:
+    post:
+      tags:
+        - 创建比对任务
+      summary: 创建比对任务
+      operationId: createTask
+      description: |
+        向比对服务器创建一个异步比对任务，并返回任务唯一标识符。
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Task"
+      responses:
+        '200':
+          description: 比对任务创建成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+        '400':
+          description: bad input parameter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /sendResult:
+    post:
+      tags:
+        - 比对结果回传
+      summary: 回传比对结果到callbackURL
+      operationId: sendResult
+      description: |
+        如果客户端创建比对任务时，传递了有效的`callbackURL`参数，则比对服务器一旦完成比对后，将主动推送结果。
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Result"
+      responses:
+        '200':
+          description: 回传成功
+          content: {}
+        default:
+          description: Network unavailable or broken
+  /diffResult/{taskId}:
+    get:
+      tags:
+        - 获取比对结果
+      summary: 获取比对结果
+      operationId: getResultByTaskId
+      parameters:
+        - name: taskId
+          in: path
+          description: 任务唯一标识符
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 获取比对结果成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Result"
+        default:
+          description: 比对发送错误
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+components:
+  schemas:
+    Task:
+      type: object
+      required:
+        - standardFile
+        - toCompareFile
+      properties:
+        taskId:
+          title: 客户指定的任务唯一ID
+          description: |
+            -  不传的话，则第三方比对系统内部会生成并返回唯一的taskId，客户后续须使用这个taskId调用与此相关的API
+            -  如果客户传递taskId，则第三方将不负责生成新的Id，而使用此
+          type: string
+          format: uuid
+          maxLength: 128
+        standardFile:
+          title: 标准稿文件
+          type: string
+          format: byte
+          description: 标准稿文件，base64编码字符串
+        standardFileURL:
+          title: 标准稿文件
+          type: string
+          format: url
+          description: 标准稿文件，远程文件URL
+        toCompareFile:
+          title: 比对稿文件
+          type: string
+          format: base64
+          description: 比对稿文件，base64编码字符串
+        toCompareFileURL:
+          title: 比对稿文件
+          type: string
+          format: url
+          description: 比对稿文件，远程文件URL
+        ocrForStandardFile:
+          type: boolean
+          default: false
+          description: 标准稿是否也用OCR识别
+        pages:
+          type: string
+          description: |
+            指定仅处理的页码，支持以下任一种形式：
+            - 分散的页码，例如`"1,3,7"`
+            - 页码范围，例如`"1-3, 5-7"`
+
+            如果不指定页码，则默认全文比对
+        trimMargins:
+          type: object
+          description: |
+            为了排除骑缝章、杂线等的图像干扰从而影响OCR识别结果。  
+            页面识别前的边缘裁剪设定参数(单位：毫米)
+          properties:
+            left:
+              description: 左边距
+              type: integer
+              format: int32
+            top:
+              description: 上边距
+              type: integer
+              format: int32
+            right:
+              description: 右边距
+              type: integer
+              format: int32
+            bottom:
+              description: 下边距
+              type: integer
+              format: int32
+        ignoreSignatureAndSeal:
+          description: 是否忽略签名和印章
+          type: boolean
+          default: false
+        callbackURL:
+          description: 比对结果回传地址
+          type: string
+          format: url
+        callbackPayload: {}
+    Page:
+      description: 页信息
+      required:
+        - pageIndex
+        - url
+      properties:
+        pageIndex:
+          description: 页码
+          type: integer
+          example: 1
+        url:
+          description: 页图片的地址，以供下载
+          type: string
+          format: url
+          example: 'https://192.168.1.2/page/download/3hXgh92sthafag.png'
+        lines:
+          description: 识别结果，一页中所有行文字
+          type: array
+          items:
+            type: string
+    DiffResult:
+      description: 比对结果
+      required:
+        - standardFilePageCount
+        - toCompareFilePageCount
+        - standardPageList
+        - toComparePageList
+        - diffPageCount
+        - diffTotalCount
+        - diffByPage
+        - diffLayoutLevel
+        - diffList
+      properties:
+        standardFilePageCount:
+          description: 标准稿总页数
+          type: integer
+          format: int32
+        toCompareFilePageCount:
+          description: 比对稿总页数
+          type: integer
+          format: int32
+        standardPageList:
+          description: 标准稿文件的页图片列表
+          type: array
+          items:
+            $ref: "#/components/schemas/Page"
+        toComparePageList:
+          description: 比对稿文件的页图片列表
+          type: array
+          items:
+            $ref: "#/components/schemas/Page"
+        diffPageCount:
+          description: 差异页总数
+          type: integer
+          format: int32
+        diffTotalCount:
+          description: 全文差异总数
+          type: integer
+          format: int32
+        diffByPage:
+          description: 是否按照左右对应页模式逐页比对
+          type: boolean
+          default: false
+        diffLayoutLevel:
+          description: 比对文字段落级别
+          type: string
+          enum:
+            - fulltext
+            - page
+            - paragraph # 以段落
+            - line
+          default: paragraph
+        diffList:
+          description: 所有差异列表
+          type: array
+          items: 
+            $ref: "#/components/schemas/Diff"
+    Result:
+      description: 比对结果
+      allOf:
+        - $ref: "#/components/schemas/ApiResponse"
+        - type: object
+          properties:
+            data: 
+              $ref: "#/components/schemas/DiffResult"
+        - type: object
+          properties:
+            callbackPayload: {}
+    Diff:
+      description: 差异具体信息
+      required:
+        - tag
+        - from
+        - to
+      properties:
+        tag: 
+          description: 差异标签，表示改动类型
+          type: string
+          enum:
+            - '+'
+            - '-'
+            - '~'
+        category:
+          description: 差异的语义分类（如数字、金额、单位、日期、限定范围等）
+          type: string
+        from:
+          description: 差异的原始文细节
+          allOf:
+            - $ref: "#/components/schemas/TextArea"
+        to:
+          description: 差异的改动文细节
+          allOf:
+            - $ref: "#/components/schemas/TextArea"
+    TextArea:
+      description: 文字区域信息
+      required:
+        - text
+        - rects
+        - pageIndex
+        - lineIndex
+      properties:
+        text:
+          description: 文字内容
+          type: string
+        rects:
+          description: 文字位置
+          type: array
+          items:
+            $ref: "#/components/schemas/Rect"
+        pageIndex:
+          description: 页码
+          type: integer
+        lineIndex:
+          description: 行号（或区间）
+          type: integer
+    Rect:
+      description: 矩形区域（[x,y,w,h]）
+      type: array
+      items:
+        type: integer
+        format: int32
+      minItems: 4
+      maxItems: 4
+      example: [100, 100, 200, 40]
+    ApiResponse:
+      description: 返回信息
+      required:
+        - taskId
+        - code
+        - message
+      properties:
+        taskId:
+          description: 任务ID
+          type: string
+          format: uuid
+        code:
+          description: 错误代码
+          type: integer
+          format: int32
+          default: 0
+        message:
+          description: 错误描述
+          type: string
+          default: success
+          example: success
+    Error:
+      description: 错误信息
+      required:
+        - code
+        - message
+      properties:
+        code:
+          description: 错误代码
+          type: integer
+          format: int32
+          example: -1
+        message:
+          description: 错误描述
+          type: string
+          example: parameter is invalid
